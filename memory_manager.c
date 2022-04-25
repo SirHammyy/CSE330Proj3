@@ -21,7 +21,7 @@ unsigned long wss;
 
 struct task_struct *task;
 
-pte_t *pte_by_address(const struct mm_struct *const mm, const unsigned long address) {
+pte_t* pte_by_address(const struct mm_struct *const mm, const unsigned long address) {
 	pgd_t *pgd;
 	p4d_t *p4d;
 	pud_t *pud;
@@ -46,8 +46,12 @@ pte_t *pte_by_address(const struct mm_struct *const mm, const unsigned long addr
 		goto do_return;
 
 	pte = pte_offset_kernel(pmd, address);
-	if (!pte_present(*pte))
+	if (!pte_present(*pte)){
+		swap = swap + 1;
 		goto do_return;
+	}
+	else 
+		rss = rss + 1;
 
 	page = pte_page(*pte);
 do_return:
@@ -55,14 +59,16 @@ do_return:
 }
 
 void count_pages(struct task_struct *ltask) {
-	printk(KERN_INFO "Count pages");
 	if (ltask != NULL) {
-		printk(KERN_INFO "Starting loop");
 		const struct vm_area_struct *vma = ltask->mm->mmap;
 		while (vma != NULL) {
 			unsigned long address;
 			for (address = vma->vm_start; address < vma->vm_end; address += PAGE_SIZE) {
-				rss = rss + 1;
+				//if (pte_present(*pte_by_address(ltask->mm, address)))
+				//	rss = rss + 1;
+				//else
+				//	swap = swap + 1;
+				//rss = rss + 1;
 				if (ptep_test_and_clear_young(vma, address, pte_by_address(ltask->mm, address)) == 1)
 					wss = wss + 1;
 			}
@@ -79,6 +85,7 @@ int ptep_test_and_clear_young(struct vm_area_struct *vma, unsigned long addr, pt
 	return ret;
 }
 
+
 unsigned long timer_interval_ns = 10e9;
 static struct hrtimer hr_timer;
 enum hrtimer_restart timer_callback(struct hrtimer *timer_for_restart) {
@@ -92,6 +99,8 @@ enum hrtimer_restart timer_callback(struct hrtimer *timer_for_restart) {
 	rss = rss / 1024;
 	wss = wss * PAGE_SIZE;
 	wss = wss / 1024;
+	swap = swap * PAGE_SIZE;
+	swap = swap / 1024;
 	printk(KERN_INFO "PID [%d]: RSS=%ld KB, SWAP=%ld KB, WSS=%ld KB", pid, rss, swap, wss);
 
 	rss = 0;
@@ -118,7 +127,6 @@ static int __init init_func(void) {
 		printk(KERN_INFO "task NULL");
 	}
 	if (task != NULL) {
-		printk(KERN_INFO "task not NULL");
 		//count_pages(task);
 		ktime_t ktime;
 		ktime = ktime_set(0, timer_interval_ns);
